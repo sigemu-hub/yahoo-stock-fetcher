@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>株価チェッカー 使い方ガイド</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2F4F1;
+    --ink:#152B25;
+    --line:#B8C2B9;
+    --green:#2E5339;
+    --green-soft:#DCE6DD;
+    --gold:#A9782E;
+    --gold-soft:#F1E6D0;
+    --red:#8C3B2E;
+    --card:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Noto Sans JP','Zen Kaku Gothic New',sans-serif;
+    font-size:19px;
+    line-height:2.05;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:56px 24px 120px;}
+
+  /* ---- Hero ---- */
+  .hero{padding-bottom:40px;}
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    letter-spacing:.14em;
+    color:var(--green);
+    text-transform:uppercase;
+    margin-bottom:18px;
+  }
+  h1{
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    font-weight:900;
+    font-size:44px;
+    line-height:1.35;
+    margin:0 0 22px;
+    color:var(--ink);
+  }
+  .lede{font-size:19px;color:#3C4A44;max-width:56ch;}
+
+  .ticker{
+    margin-top:40px;
+    height:64px;
+    display:flex;
+    align-items:flex-end;
+    gap:6px;
+  }
+  .bar{width:8px;border-radius:2px;background:var(--green);opacity:.85;}
+  .bar.down{background:var(--red);}
+
+  /* ---- Section shell ---- */
+  section{margin-top:76px;}
+  .divider{border:none;border-top:2px solid var(--line);margin:0 0 34px;}
+  .head-row{display:flex;align-items:baseline;gap:14px;margin-bottom:8px;}
+  .num{
+    font-family:'JetBrains Mono',monospace;
+    font-size:16px;
+    color:var(--gold);
+    font-weight:600;
+  }
+  h2{
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    font-weight:700;
+    font-size:28px;
+    margin:0;
+    color:var(--ink);
+  }
+  .section-sub{color:#5B6B64;font-size:17px;margin:0 0 30px;}
+
+  /* ---- Flow diagram ---- */
+  .flow{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:8px;
+  }
+  .flow-step{
+    display:flex;
+    align-items:center;
+    gap:18px;
+    padding:20px 18px;
+  }
+  .flow-icon{
+    flex:0 0 auto;
+    width:46px;height:46px;
+    border-radius:10px;
+    background:var(--green-soft);
+    color:var(--green);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700;
+    font-size:15px;
+  }
+  .flow-text b{display:block;font-size:17px;margin-bottom:2px;}
+  .flow-text span{font-size:15px;color:#5B6B64;line-height:1.6;}
+  .flow-arrow{
+    text-align:center;
+    color:var(--line);
+    font-size:20px;
+    margin:-2px 0;
+  }
+
+  /* ---- Code block ---- */
+  .code{
+    background:#0F1E19;
+    color:#DCEBE1;
+    font-family:'JetBrains Mono',monospace;
+    font-size:15.5px;
+    line-height:1.8;
+    padding:18px 20px;
+    border-radius:10px;
+    overflow-x:auto;
+    margin:18px 0;
+  }
+  .code .c1{color:#7FB89A;}
+  .comment-line{color:#6E8078;}
+
+  .example{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-left:4px solid var(--green);
+    border-radius:8px;
+    padding:16px 20px;
+    margin:16px 0;
+    font-size:16.5px;
+  }
+  .example b{color:var(--green);}
+
+  /* ---- Steps ---- */
+  .steps{counter-reset:step;}
+  .step{
+    position:relative;
+    padding:0 0 34px 54px;
+    border-left:2px solid var(--line);
+    margin-left:20px;
+  }
+  .step:last-child{border-left:2px solid transparent;padding-bottom:0;}
+  .step::before{
+    counter-increment:step;
+    content:counter(step);
+    position:absolute;
+    left:-21px;top:0;
+    width:40px;height:40px;
+    border-radius:50%;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700;
+    font-size:16px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .step h3{
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    font-size:19px;
+    margin:6px 0 8px;
+  }
+  .step p{margin:0 0 6px;font-size:16.5px;color:#3C4A44;}
+
+  .callout{
+    background:var(--gold-soft);
+    border-radius:10px;
+    padding:18px 22px;
+    font-size:16px;
+    color:#5A431C;
+    margin-top:36px;
+  }
+  .callout b{color:var(--gold);}
+
+  footer{
+    margin-top:90px;
+    padding-top:28px;
+    border-top:2px solid var(--line);
+    font-size:14.5px;
+    color:#7A8880;
+  }
+
+  @media(max-width:600px){
+    body{font-size:17px;}
+    h1{font-size:32px;}
+    .wrap{padding:36px 18px 90px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="eyebrow">SETUP GUIDE — yahoo-stock-fetcher</div>
+    <h1>チャットで話しかけるだけで<br>株価が返ってくる仕組み</h1>
+    <p class="lede">Claude Codeに「〇〇の株価を10日分見せて」と伝えると、裏側でこのツールがYahoo Financeへ問い合わせ、結果を表にして返してくれます。ここでは仕組みと、GitHubに保存するまでの手順をまとめました。</p>
+    <div class="ticker" aria-hidden="true">
+      <div class="bar" style="height:38%"></div>
+      <div class="bar down" style="height:55%"></div>
+      <div class="bar" style="height:70%"></div>
+      <div class="bar" style="height:48%"></div>
+      <div class="bar down" style="height:30%"></div>
+      <div class="bar" style="height:62%"></div>
+      <div class="bar" style="height:80%"></div>
+      <div class="bar down" style="height:44%"></div>
+      <div class="bar" style="height:58%"></div>
+      <div class="bar" style="height:90%"></div>
+    </div>
+  </div>
+
+  <section>
+    <hr class="divider">
+    <div class="head-row"><span class="num">01</span><h2>仕組み（データの流れ）</h2></div>
+    <p class="section-sub">4つの登場人物が、毎回この順番で動きます。</p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-icon">You</div>
+        <div class="flow-text"><b>あなた</b><span>チャットで「9418の株価を10日分」のように話しかける</span></div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <div class="flow-icon">CC</div>
+        <div class="flow-text"><b>Claude Code</b><span>依頼を読み取り、銘柄コードと日数を組み立てる</span></div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <div class="flow-icon">.py</div>
+        <div class="flow-text"><b>get_stock.py</b><span>このスクリプトが実行され、データ取得の窓口になる</span></div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <div class="flow-icon">YF</div>
+        <div class="flow-text"><b>Yahoo Finance</b><span>実際の株価データを送り返してくる</span></div>
+      </div>
+      <div class="flow-arrow">↑ 結果が戻ってくる</div>
+    </div>
+  </section>
+
+  <section>
+    <hr class="divider">
+    <div class="head-row"><span class="num">02</span><h2>使い方の例</h2></div>
+    <p class="section-sub">ターミナルから直接使う場合はこう打ちます。</p>
+
+    <div class="code"><span class="comment-line"># 東証9418番、直近10日間</span><br>python get_stock.py 9418 10</div>
+    <div class="code"><span class="comment-line"># 米国株Apple、直近5日間（日数は省略可）</span><br>python get_stock.py AAPL</div>
+    <div class="code"><span class="comment-line"># 結果をCSVでも残したいとき</span><br>python get_stock.py 9418.T 10 --csv</div>
+
+    <div class="example">Claude Code上では、コマンドを打つ必要はありません。<br><b>「ユーネクストの直近10日間の株価を見せて」</b>と話すだけで、Claude Codeが上のコマンドを代わりに実行してくれます。</div>
+  </section>
+
+  <section>
+    <hr class="divider">
+    <div class="head-row"><span class="num">03</span><h2>GitHubへ保存する手順</h2></div>
+    <p class="section-sub">一度リポジトリを作れば、以後は変更のたびに保存（バックアップ）できます。上から順番に進めてください。</p>
+
+    <div class="steps">
+      <div class="step">
+        <h3>GitHub上に空のリポジトリを作る</h3>
+        <p>GitHubにログインし、右上の「＋」→「New repository」を選択。</p>
+        <p>名前を <b>yahoo-stock-fetcher</b> とし、「Add a README」はチェックを外したまま「Create repository」を押します。</p>
+      </div>
+      <div class="step">
+        <h3>手元のパソコンでGitの初期設定をする（最初の1回だけ）</h3>
+        <div class="code">git config --global user.name "あなたの名前"<br>git config --global user.email "GitHubの登録メール"</div>
+      </div>
+      <div class="step">
+        <h3>このフォルダをGitリポジトリにする</h3>
+        <p>ダウンロードした <b>yahoo-stock-fetcher</b> フォルダの中でターミナルを開き、実行します。</p>
+        <div class="code">git init<br>git add .<br>git commit -m "初回コミット：株価取得ツール"</div>
+      </div>
+      <div class="step">
+        <h3>GitHubへ接続してアップロードする</h3>
+        <p>手順1で作成したリポジトリのページに表示されている、あなた専用のURLに置き換えて実行します。</p>
+        <div class="code">git branch -M main<br>git remote add origin https://github.com/あなたのユーザー名/yahoo-stock-fetcher.git<br>git push -u origin main</div>
+      </div>
+    </div>
+
+    <div class="callout"><b>もっと簡単に済ませたい場合：</b><br>Claude Codeをこのフォルダで開いた状態で「このプロジェクトをGitHubにアップロードして」と話しかけると、GitHub連携（gh コマンド）が設定済みであれば、ここまでの手順をClaude Codeが代わりに実行してくれます。うまくいかない場合の保険として、この手順書を残しています。</div>
+  </section>
+
+  <footer>
+    yahoo-stock-fetcher · README.md / CLAUDE.md にも同じ内容の要点をまとめています
+  </footer>
+
+</div>
+</body>
+</html>
