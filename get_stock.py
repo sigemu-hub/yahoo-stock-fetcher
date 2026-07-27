@@ -33,10 +33,10 @@ def normalize_ticker(ticker: str) -> str:
     return ticker
 
 
-def fetch_stock(ticker: str, days: int):
+def fetch_stock(ticker: str, days: int, ema_short: int = 5, ema_long: int = 25):
     ticker = normalize_ticker(ticker)
-    # 土日・祝日を考慮して少し多めに取得してから直近days件に絞る
-    period_days = max(days * 3, 30)
+    # 土日・祝日に加え、EMAの精度を保つための助走期間分も多めに取得してから直近days件に絞る
+    period_days = max(days * 3, ema_long * 5, 30)
     stock = yf.Ticker(ticker)
     hist = stock.history(period=f"{period_days}d")
 
@@ -45,11 +45,16 @@ def fetch_stock(ticker: str, days: int):
 
     # 取引時間中などでまだ確定していない当日分(NaN)は除外する
     hist = hist.dropna(subset=["Close"])
+
+    # 指数平滑移動平均線(EMA)を算出（助走期間を含めた全体で計算してから切り詰める）
+    hist[f"EMA{ema_short}"] = hist["Close"].ewm(span=ema_short, adjust=False).mean()
+    hist[f"EMA{ema_long}"] = hist["Close"].ewm(span=ema_long, adjust=False).mean()
+
     hist = hist.tail(days)
     return ticker, stock, hist
 
 
-def print_table(ticker: str, stock, hist: "pd.DataFrame"):
+def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_short: int = 5, ema_long: int = 25):
     info = {}
     try:
         info = stock.info
@@ -63,7 +68,13 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame"):
     print(f"銘柄: {name} ({ticker})")
     print("=" * 62)
 
-    header = f"{'日付':<12}{'始値':>10}{'高値':>10}{'安値':>10}{'終値':>10}{'出来高':>15}"
+    ema_short_col = f"EMA{ema_short}"
+    ema_long_col = f"EMA{ema_long}"
+
+    header = (
+        f"{'日付':<12}{'始値':>10}{'高値':>10}{'安値':>10}{'終値':>10}"
+        f"{ema_short_col:>10}{ema_long_col:>10}{'出来高':>15}"
+    )
     print(header)
     print("-" * len(header))
 
@@ -74,6 +85,8 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame"):
             f"{row['High']:>10.1f}"
             f"{row['Low']:>10.1f}"
             f"{row['Close']:>10.1f}"
+            f"{row[ema_short_col]:>10.1f}"
+            f"{row[ema_long_col]:>10.1f}"
             f"{int(row['Volume']):>15,}"
         )
 
@@ -86,7 +99,17 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame"):
     arrow = "▲" if change > 0 else ("▼" if change < 0 else "→")
 
     print(f"期間騰落: {arrow} {change:+.1f} ({change_pct:+.2f}%)  通貨: {currency}")
-    print("=" * 62)
+
+    last_ema_short = hist[ema_short_col].iloc[-1]
+    last_ema_long = hist[ema_long_col].iloc[-1]
+    if last_ema_short > last_ema_long:
+        trend = f"EMA{ema_short} > EMA{ema_long}（短期優勢・上昇基調）"
+    elif last_ema_short < last_ema_long:
+        trend = f"EMA{ema_short} < EMA{ema_long}（短期劣勢・下降基調）"
+    else:
+        trend = f"EMA{ema_short} = EMA{ema_long}（拮抗）"
+    print(f"EMAトレンド: {trend}")
+    print("=" * len(header))
 
 
 def save_csv(ticker: str, hist: "pd.DataFrame", path: str = None) -> str:
@@ -103,11 +126,13 @@ def main():
     parser.add_argument("ticker", help="銘柄コード（例: 9418.T, AAPL, 9418）")
     parser.add_argument("days", type=int, nargs="?", default=5, help="取得したい日数（デフォルト: 5日）")
     parser.add_argument("--csv", action="store_true", help="CSVファイルとして保存する")
+    parser.add_argument("--ema-short", type=int, default=5, help="短期EMAの期間（デフォルト: 5日）")
+    parser.add_argument("--ema-long", type=int, default=25, help="長期EMAの期間（デフォルト: 25日）")
 
     args = parser.parse_args()
 
     try:
-        ticker, stock, hist = fetch_stock(args.ticker, args.days)
+        ticker, stock, hist = fetch_stock(args.ticker, args.days, args.ema_short, args.ema_long)
     except ValueError as e:
         print(f"エラー: {e}")
         sys.exit(1)
@@ -115,7 +140,7 @@ def main():
         print(f"データ取得中にエラーが発生しました: {e}")
         sys.exit(1)
 
-    print_table(ticker, stock, hist)
+    print_table(ticker, stock, hist, args.ema_short, args.ema_long)
 
     if args.csv:
         save_csv(ticker, hist)
