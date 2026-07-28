@@ -167,6 +167,92 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_periods: list = (5
     print("=" * len(header))
 
 
+VRVP_VALUE_AREA_PCT = 0.70
+
+
+def compute_volume_profile(hist: "pd.DataFrame", bins: int = 10) -> dict:
+    """表示期間（Visible Range）の高値・安値レンジを価格帯に分割し、
+    各日の出来高を高値〜安値レンジ内で均等分布させて価格帯ごとに積み上げる（VRVP）"""
+    price_low = float(hist["Low"].min())
+    price_high = float(hist["High"].max())
+    if price_high <= price_low:
+        price_high = price_low + 1.0
+
+    bin_width = (price_high - price_low) / bins
+    edges = [price_low + i * bin_width for i in range(bins + 1)]
+    volumes = [0.0] * bins
+
+    for row in hist.itertuples():
+        low, high, vol = row.Low, row.High, row.Volume
+        day_range = high - low
+        if day_range <= 0:
+            idx = min(int((low - price_low) / bin_width), bins - 1)
+            volumes[idx] += vol
+            continue
+        for i in range(bins):
+            overlap = min(high, edges[i + 1]) - max(low, edges[i])
+            if overlap > 0:
+                volumes[i] += vol * (overlap / day_range)
+
+    poc_index = max(range(bins), key=lambda i: volumes[i])
+
+    total = sum(volumes)
+    va_target = total * VRVP_VALUE_AREA_PCT
+    low_idx = high_idx = poc_index
+    current = volumes[poc_index]
+    while current < va_target and (low_idx > 0 or high_idx < bins - 1):
+        vol_below = volumes[low_idx - 1] if low_idx > 0 else -1
+        vol_above = volumes[high_idx + 1] if high_idx < bins - 1 else -1
+        if vol_above >= vol_below:
+            high_idx += 1
+            current += volumes[high_idx]
+        else:
+            low_idx -= 1
+            current += volumes[low_idx]
+
+    return {
+        "edges": edges,
+        "volumes": volumes,
+        "poc_index": poc_index,
+        "va_low_index": low_idx,
+        "va_high_index": high_idx,
+    }
+
+
+def print_volume_profile(hist: "pd.DataFrame", bins: int = 10):
+    profile = compute_volume_profile(hist, bins)
+    edges = profile["edges"]
+    volumes = profile["volumes"]
+    poc_index = profile["poc_index"]
+    va_low_index = profile["va_low_index"]
+    va_high_index = profile["va_high_index"]
+
+    poc_price = (edges[poc_index] + edges[poc_index + 1]) / 2
+    va_low_price = edges[va_low_index]
+    va_high_price = edges[va_high_index + 1]
+    max_vol = max(volumes) if volumes else 0
+    bar_width = 30
+
+    print(f"出来高プロファイル（VRVP, 表示期間を{bins}分割）")
+    print(f"POC（最多出来高帯）: {poc_price:,.1f}   バリューエリア(70%): {va_low_price:,.1f} 〜 {va_high_price:,.1f}")
+    print("-" * 62)
+
+    for i in reversed(range(bins)):
+        bin_lo, bin_hi = edges[i], edges[i + 1]
+        vol = volumes[i]
+        bar_len = int(vol / max_vol * bar_width) if max_vol else 0
+        bar = "█" * bar_len
+        if i == poc_index:
+            marker = " ← POC"
+        elif va_low_index <= i <= va_high_index:
+            marker = " VA"
+        else:
+            marker = ""
+        print(f"{bin_lo:>9,.1f}-{bin_hi:<9,.1f} {bar:<{bar_width}} {int(vol):>13,}{marker}")
+
+    print("=" * 62)
+
+
 def save_csv(ticker: str, hist: "pd.DataFrame", path: str = None) -> str:
     if path is None:
         safe_ticker = ticker.replace(".", "_")
@@ -187,8 +273,16 @@ def main():
         default="5,25,75,200",
         help="表示するEMA期間をカンマ区切りで指定（選択可: 5, 25, 75, 200 / デフォルト: 5,25,75,200）",
     )
+    parser.add_argument(
+        "--vrvp-bins", type=int, default=10, help="出来高プロファイル(VRVP)の価格帯分割数（デフォルト: 10）"
+    )
+    parser.add_argument("--no-vrvp", action="store_true", help="出来高プロファイル(VRVP)を表示しない")
 
     args = parser.parse_args()
+
+    if args.vrvp_bins < 2:
+        print("エラー: --vrvp-bins は2以上を指定してください。")
+        sys.exit(1)
 
     try:
         ema_periods = parse_ema_periods(args.ema)
@@ -201,6 +295,9 @@ def main():
         sys.exit(1)
 
     print_table(ticker, stock, hist, ema_periods)
+
+    if not args.no_vrvp:
+        print_volume_profile(hist, args.vrvp_bins)
 
     if args.csv:
         save_csv(ticker, hist)
