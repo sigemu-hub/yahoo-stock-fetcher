@@ -53,10 +53,13 @@ def parse_ema_periods(value: str) -> list:
     return sorted(set(periods))
 
 
+VOL_MA_PERIOD = 20
+
+
 def fetch_stock(ticker: str, days: int, ema_periods: list = (5, 25, 75, 200)):
     ticker = normalize_ticker(ticker)
-    # 土日・祝日に加え、EMAの精度を保つための助走期間分も多めに取得してから直近days件に絞る
-    period_days = max(days * 3, max(ema_periods) * 5, 30)
+    # 土日・祝日に加え、EMAや出来高MAの精度を保つための助走期間分も多めに取得してから直近days件に絞る
+    period_days = max(days * 3, max(ema_periods) * 5, days + VOL_MA_PERIOD * 3, 30)
     stock = yf.Ticker(ticker)
     hist = stock.history(period=f"{period_days}d")
 
@@ -69,6 +72,9 @@ def fetch_stock(ticker: str, days: int, ema_periods: list = (5, 25, 75, 200)):
     # 指数平滑移動平均線(EMA)を算出（助走期間を含めた全体で計算してから切り詰める）
     for period in ema_periods:
         hist[f"EMA{period}"] = hist["Close"].ewm(span=period, adjust=False).mean()
+
+    # 出来高の単純移動平均（出来高MA20）を算出
+    hist[f"VolMA{VOL_MA_PERIOD}"] = hist["Volume"].rolling(window=VOL_MA_PERIOD, min_periods=1).mean()
 
     hist = hist.tail(days)
     return ticker, stock, hist
@@ -90,10 +96,12 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_periods: list = (5
 
     ema_periods = sorted(ema_periods)
     ema_cols = [f"EMA{p}" for p in ema_periods]
+    vol_ma_col = f"VolMA{VOL_MA_PERIOD}"
+    vol_ma_header = f"出来高MA{VOL_MA_PERIOD}"
 
     header = f"{'日付':<12}{'始値':>10}{'高値':>10}{'安値':>10}{'終値':>10}"
     header += "".join(f"{col:>10}" for col in ema_cols)
-    header += f"{'出来高':>15}"
+    header += f"{'出来高':>15}{vol_ma_header:>15}{'出来高比':>10}"
     print(header)
     print("-" * len(header))
 
@@ -106,7 +114,10 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_periods: list = (5
             f"{row['Close']:>10.1f}"
         )
         line += "".join(f"{row[col]:>10.1f}" for col in ema_cols)
+        vol_ratio = (row["Volume"] / row[vol_ma_col] * 100) if row[vol_ma_col] else 0
         line += f"{int(row['Volume']):>15,}"
+        line += f"{int(row[vol_ma_col]):>15,}"
+        line += f"{vol_ratio:>9.1f}%"
         print(line)
 
     print("-" * len(header))
@@ -142,6 +153,17 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_periods: list = (5
         else:
             label = ""
         print(f"EMAトレンド: {order_str}{label}")
+
+    last_volume = hist["Volume"].iloc[-1]
+    last_vol_ma = hist[vol_ma_col].iloc[-1]
+    last_vol_ratio = (last_volume / last_vol_ma * 100) if last_vol_ma else 0
+    if last_vol_ratio > 100:
+        vol_note = f"平均(MA{VOL_MA_PERIOD})の{last_vol_ratio:.0f}%（平均より多い）"
+    elif last_vol_ratio < 100:
+        vol_note = f"平均(MA{VOL_MA_PERIOD})の{last_vol_ratio:.0f}%（平均より少ない）"
+    else:
+        vol_note = f"平均(MA{VOL_MA_PERIOD})と同水準"
+    print(f"出来高: {vol_note}")
     print("=" * len(header))
 
 
