@@ -33,10 +33,30 @@ def normalize_ticker(ticker: str) -> str:
     return ticker
 
 
-def fetch_stock(ticker: str, days: int, ema_short: int = 5, ema_long: int = 25):
+EMA_PERIOD_CHOICES = (5, 25, 75, 200)
+
+
+def parse_ema_periods(value: str) -> list:
+    """"5,25,75,200" のようなカンマ区切り文字列をEMA期間のリストに変換する"""
+    periods = []
+    for part in value.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        period = int(part)
+        if period not in EMA_PERIOD_CHOICES:
+            choices = ", ".join(str(p) for p in EMA_PERIOD_CHOICES)
+            raise ValueError(f"EMA期間は次の中から指定してください: {choices}（指定値: {period}）")
+        periods.append(period)
+    if not periods:
+        raise ValueError("EMA期間が指定されていません。")
+    return sorted(set(periods))
+
+
+def fetch_stock(ticker: str, days: int, ema_periods: list = (5, 25, 75, 200)):
     ticker = normalize_ticker(ticker)
     # 土日・祝日に加え、EMAの精度を保つための助走期間分も多めに取得してから直近days件に絞る
-    period_days = max(days * 3, ema_long * 5, 30)
+    period_days = max(days * 3, max(ema_periods) * 5, 30)
     stock = yf.Ticker(ticker)
     hist = stock.history(period=f"{period_days}d")
 
@@ -47,14 +67,14 @@ def fetch_stock(ticker: str, days: int, ema_short: int = 5, ema_long: int = 25):
     hist = hist.dropna(subset=["Close"])
 
     # 指数平滑移動平均線(EMA)を算出（助走期間を含めた全体で計算してから切り詰める）
-    hist[f"EMA{ema_short}"] = hist["Close"].ewm(span=ema_short, adjust=False).mean()
-    hist[f"EMA{ema_long}"] = hist["Close"].ewm(span=ema_long, adjust=False).mean()
+    for period in ema_periods:
+        hist[f"EMA{period}"] = hist["Close"].ewm(span=period, adjust=False).mean()
 
     hist = hist.tail(days)
     return ticker, stock, hist
 
 
-def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_short: int = 5, ema_long: int = 25):
+def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_periods: list = (5, 25, 75, 200)):
     info = {}
     try:
         info = stock.info
@@ -68,27 +88,26 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_short: int = 5, em
     print(f"銘柄: {name} ({ticker})")
     print("=" * 62)
 
-    ema_short_col = f"EMA{ema_short}"
-    ema_long_col = f"EMA{ema_long}"
+    ema_periods = sorted(ema_periods)
+    ema_cols = [f"EMA{p}" for p in ema_periods]
 
-    header = (
-        f"{'日付':<12}{'始値':>10}{'高値':>10}{'安値':>10}{'終値':>10}"
-        f"{ema_short_col:>10}{ema_long_col:>10}{'出来高':>15}"
-    )
+    header = f"{'日付':<12}{'始値':>10}{'高値':>10}{'安値':>10}{'終値':>10}"
+    header += "".join(f"{col:>10}" for col in ema_cols)
+    header += f"{'出来高':>15}"
     print(header)
     print("-" * len(header))
 
     for date, row in hist.iterrows():
-        print(
+        line = (
             f"{date.strftime('%Y-%m-%d'):<12}"
             f"{row['Open']:>10.1f}"
             f"{row['High']:>10.1f}"
             f"{row['Low']:>10.1f}"
             f"{row['Close']:>10.1f}"
-            f"{row[ema_short_col]:>10.1f}"
-            f"{row[ema_long_col]:>10.1f}"
-            f"{int(row['Volume']):>15,}"
         )
+        line += "".join(f"{row[col]:>10.1f}" for col in ema_cols)
+        line += f"{int(row['Volume']):>15,}"
+        print(line)
 
     print("-" * len(header))
 
@@ -100,15 +119,29 @@ def print_table(ticker: str, stock, hist: "pd.DataFrame", ema_short: int = 5, em
 
     print(f"期間騰落: {arrow} {change:+.1f} ({change_pct:+.2f}%)  通貨: {currency}")
 
-    last_ema_short = hist[ema_short_col].iloc[-1]
-    last_ema_long = hist[ema_long_col].iloc[-1]
-    if last_ema_short > last_ema_long:
-        trend = f"EMA{ema_short} > EMA{ema_long}（短期優勢・上昇基調）"
-    elif last_ema_short < last_ema_long:
-        trend = f"EMA{ema_short} < EMA{ema_long}（短期劣勢・下降基調）"
-    else:
-        trend = f"EMA{ema_short} = EMA{ema_long}（拮抗）"
-    print(f"EMAトレンド: {trend}")
+    last_values = [(p, hist[f"EMA{p}"].iloc[-1]) for p in ema_periods]
+    order_parts = [f"EMA{last_values[0][0]}"]
+    signs = []
+    for (_, v1), (p2, v2) in zip(last_values, last_values[1:]):
+        if v1 > v2:
+            sign = ">"
+        elif v1 < v2:
+            sign = "<"
+        else:
+            sign = "="
+        signs.append(sign)
+        order_parts.append(sign)
+        order_parts.append(f"EMA{p2}")
+    order_str = " ".join(order_parts)
+
+    if len(ema_periods) >= 2:
+        if all(s == ">" for s in signs):
+            label = "（短期上位の完全上昇配列）"
+        elif all(s == "<" for s in signs):
+            label = "（短期下位の完全下降配列）"
+        else:
+            label = ""
+        print(f"EMAトレンド: {order_str}{label}")
     print("=" * len(header))
 
 
@@ -126,13 +159,18 @@ def main():
     parser.add_argument("ticker", help="銘柄コード（例: 9418.T, AAPL, 9418）")
     parser.add_argument("days", type=int, nargs="?", default=5, help="取得したい日数（デフォルト: 5日）")
     parser.add_argument("--csv", action="store_true", help="CSVファイルとして保存する")
-    parser.add_argument("--ema-short", type=int, default=5, help="短期EMAの期間（デフォルト: 5日）")
-    parser.add_argument("--ema-long", type=int, default=25, help="長期EMAの期間（デフォルト: 25日）")
+    parser.add_argument(
+        "--ema",
+        type=str,
+        default="5,25,75,200",
+        help="表示するEMA期間をカンマ区切りで指定（選択可: 5, 25, 75, 200 / デフォルト: 5,25,75,200）",
+    )
 
     args = parser.parse_args()
 
     try:
-        ticker, stock, hist = fetch_stock(args.ticker, args.days, args.ema_short, args.ema_long)
+        ema_periods = parse_ema_periods(args.ema)
+        ticker, stock, hist = fetch_stock(args.ticker, args.days, ema_periods)
     except ValueError as e:
         print(f"エラー: {e}")
         sys.exit(1)
@@ -140,7 +178,7 @@ def main():
         print(f"データ取得中にエラーが発生しました: {e}")
         sys.exit(1)
 
-    print_table(ticker, stock, hist, args.ema_short, args.ema_long)
+    print_table(ticker, stock, hist, ema_periods)
 
     if args.csv:
         save_csv(ticker, hist)
